@@ -209,24 +209,63 @@ app.get('/health', (_req: express.Request, res: express.Response) => {
 // Test connection endpoint
 app.get('/api/test-connection', async (_req: express.Request, res: express.Response) => {
   try {
-    const { data, error } = await supabase
+    console.log('Testing database connection...');
+    
+    // Try a direct select with no filters first
+    console.log('Attempting direct select...');
+    const { data: selectData, error: selectError } = await supabase
       .from('Bhajan_Signups')
-      .select('offeringStatus')
-      .limit(1);
+      .select('*')
+      .limit(5);
 
-    if (error) {
-      throw error;
+    if (selectError) {
+      console.error('Select error:', selectError);
+      const error = selectError as PostgrestError;
+      throw new Error(error.message);
+    }
+
+    console.log('Select successful!');
+    console.log('Rows retrieved:', selectData?.length);
+    if (selectData && selectData.length > 0) {
+      console.log('First row:', selectData[0]);
+      console.log('Available columns:', Object.keys(selectData[0]));
+    }
+
+    // Try another test with offering status filter
+    console.log('\nTesting with offeringStatus filter...');
+    const { data: filterData, error: filterError } = await supabase
+      .from('Bhajan_Signups')
+      .select('offeringStatus');
+
+    if (filterError) {
+      console.error('Filter error:', filterError);
+    } else if (filterData) {
+      const statuses = [...new Set(filterData.map(row => row.offeringStatus))].filter(Boolean);
+      console.log('Available offeringStatus values:', statuses);
     }
 
     res.json({
       status: 'success',
-      connected: !!data
+      selectResult: {
+        rowCount: selectData?.length || 0,
+        firstRow: selectData?.[0],
+        error: selectError ? (selectError as PostgrestError).message : null
+      },
+      filterResult: {
+        availableStatuses: filterData ? 
+          [...new Set(filterData.map(row => row.offeringStatus))].filter(Boolean) : 
+          [],
+        error: filterError ? (filterError as PostgrestError).message : null
+      }
     });
   } catch (error) {
+    console.error('Error testing connection:', error);
     const pgError = error as PostgrestError;
     res.status(500).json({
       error: 'Failed to connect to database',
-      details: pgError.message
+      details: pgError.message || 'Unknown error',
+      code: pgError.code,
+      hint: "Please verify your SUPABASE_SERVICE_KEY is the 'service_role' key, not the 'anon' key"
     });
   }
 });
