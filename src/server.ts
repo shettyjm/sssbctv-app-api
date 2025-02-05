@@ -191,7 +191,8 @@ const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
 console.log('Initializing Supabase with URL:', supabaseUrl.substring(0, 20) + '...');
 
 
-console.log('!!!! Remove this . supabaseKey:', supabaseKey.substring(0, 20) + '...');
+console.log('!!!! Remove this . supabaseKey:', supabaseKey+ '...');
+
 console.log('Key type:', supabaseKey.startsWith('eyJ') ? 'JWT Token' : 'Unknown format');
 
 const supabase = createClient(supabaseUrl, supabaseKey, {
