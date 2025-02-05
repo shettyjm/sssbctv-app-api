@@ -241,6 +241,10 @@ app.get('/health', (_req: express.Request, res: express.Response) => {
 });
 
 // Main API endpoint with validation
+// src/server.ts
+// ... (previous imports and setup remain the same) ...
+
+// Main API endpoint with validation and debugging
 app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, res: express.Response) => {
   try {
     const body: GetBhajanSignupsRequest = req.body;
@@ -251,6 +255,9 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
     let query = supabase
       .from('Bhajan_Signups')
       .select('*', { count: 'exact' });
+
+    // Log the initial query state
+    console.log('Initial query setup complete');
 
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
@@ -266,18 +273,19 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
     }
 
     if (sort) {
+      console.log('Applying sort:', sort);
       query = query.order(sort.field, { ascending: sort.order === 'asc' });
     }
 
     if (pagination) {
+      console.log('Applying pagination:', pagination);
       const { page, pageSize } = pagination;
       const start = (page - 1) * pageSize;
       query = query.range(start, start + pageSize - 1);
     }
 
-    // Log the full query details
-    console.log('Query config:', query.toSQL());
-
+    // Execute the query
+    console.log('Executing main query...');
     const { data, error, count } = await query;
 
     if (error) {
@@ -285,20 +293,37 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
       throw error;
     }
 
-    // Log the raw results
+    // Log the results
     console.log('Query results:', {
       resultCount: data?.length || 0,
       totalCount: count,
       firstRow: data?.[0]
     });
 
-    // Let's also do a raw count query to verify
-    const { count: rawCount } = await supabase
+    // Perform a separate count query for verification
+    console.log('Executing count verification query...');
+    const { data: countData, error: countError, count: rawCount } = await supabase
       .from('Bhajan_Signups')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'exact' })
       .eq('offeringStatus', filters?.offeringStatus || '');
     
-    console.log('Raw count for offeringStatus:', rawCount);
+    if (countError) {
+      console.error('Count query error:', countError);
+    } else {
+      console.log('Raw count for offeringStatus:', rawCount);
+    }
+
+    // Check actual data in the database for the offering status
+    console.log('Checking distinct offering statuses in database...');
+    const { data: distinctStatuses, error: distinctError } = await supabase
+      .from('Bhajan_Signups')
+      .select('offeringStatus')
+      .not('offeringStatus', 'is', null);
+
+    if (!distinctError && distinctStatuses) {
+      const uniqueStatuses = [...new Set(distinctStatuses.map(row => row.offeringStatus))];
+      console.log('Distinct offering statuses in database:', uniqueStatuses);
+    }
 
     res.json({
       data,
