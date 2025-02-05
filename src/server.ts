@@ -2,14 +2,13 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, PostgrestError } from '@supabase/supabase-js';
 import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
+import { performance } from 'perf_hooks';
 
+// Load environment variables
 dotenv.config();
-
-const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Constants and Enums
 const VALID_DIETIES = [
@@ -38,28 +37,10 @@ const VALID_OFFERING_STATUSES = [
   'PENDING'
 ] as const;
 
-// Valid fields for sorting
-const VALID_SORT_FIELDS = [
-  'id',
-  'created_at',
-  'title',
-  'position',
-  'singer',
-  'details',
-  'signedUp',
-  'tempo',
-  'tempoIcon',
-  'diety',
-  'dietyIcon',
-  'offering_on',
-  'offeringStatus'
-] as const;
-
 // Types
 type DietyType = typeof VALID_DIETIES[number];
 type TempoType = typeof VALID_TEMPOS[number];
 type OfferingStatusType = typeof VALID_OFFERING_STATUSES[number];
-type SortFieldType = typeof VALID_SORT_FIELDS[number];
 
 interface BhajanSignupDto {
   id: string;
@@ -92,21 +73,10 @@ interface GetBhajanSignupsRequest {
     pageSize: number;
   };
   sort?: {
-    field: SortFieldType;
+    field: keyof BhajanSignupDto;
     order: 'asc' | 'desc';
   };
 }
-
-// Validation functions
-const isValidDate = (dateStr: string): boolean => {
-  const date = new Date(dateStr);
-  return date instanceof Date && !isNaN(date.getTime());
-};
-
-const isValidUUID = (str: string): boolean => {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(str);
-};
 
 // Validation Middleware
 const validateRequest = (
@@ -114,107 +84,96 @@ const validateRequest = (
   res: express.Response,
   next: express.NextFunction
 ): void => {
-  const body: GetBhajanSignupsRequest = req.body;
+  try {
+    const body: GetBhajanSignupsRequest = req.body;
 
-  // Validate filters if present
-  if (body.filters) {
-    const { diety, tempo, offeringStatus, created_at, offering_on } = body.filters;
+    if (body.filters) {
+      const { diety, tempo, offeringStatus, created_at, offering_on } = body.filters;
 
-    // Validate diety
-    if (diety && !VALID_DIETIES.includes(diety)) {
-      res.status(400).json({
-        error: 'Invalid diety value',
-        validValues: VALID_DIETIES
-      });
-      return;
+      if (diety && !VALID_DIETIES.includes(diety)) {
+        res.status(400).json({
+          error: 'Invalid diety value',
+          validValues: VALID_DIETIES
+        });
+        return;
+      }
+
+      if (tempo && !VALID_TEMPOS.includes(tempo)) {
+        res.status(400).json({
+          error: 'Invalid tempo value',
+          validValues: VALID_TEMPOS
+        });
+        return;
+      }
+
+      if (offeringStatus && !VALID_OFFERING_STATUSES.includes(offeringStatus)) {
+        res.status(400).json({
+          error: 'Invalid offering status',
+          validValues: VALID_OFFERING_STATUSES
+        });
+        return;
+      }
+
+      if (created_at && isNaN(Date.parse(created_at))) {
+        res.status(400).json({
+          error: 'Invalid created_at date format'
+        });
+        return;
+      }
+
+      if (offering_on && isNaN(Date.parse(offering_on))) {
+        res.status(400).json({
+          error: 'Invalid offering_on date format'
+        });
+        return;
+      }
+
+      if (body.filters.signedUp !== undefined && typeof body.filters.signedUp !== 'boolean') {
+        res.status(400).json({
+          error: 'signedUp must be a boolean value'
+        });
+        return;
+      }
     }
 
-    // Validate tempo
-    if (tempo && !VALID_TEMPOS.includes(tempo)) {
-      res.status(400).json({
-        error: 'Invalid tempo value',
-        validValues: VALID_TEMPOS
-      });
-      return;
+    if (body.pagination) {
+      const { page, pageSize } = body.pagination;
+      if (
+        !Number.isInteger(page) ||
+        !Number.isInteger(pageSize) ||
+        page < 1 ||
+        pageSize < 1 ||
+        pageSize > 100
+      ) {
+        res.status(400).json({
+          error: 'Invalid pagination values. Page must be >= 1 and pageSize must be between 1 and 100'
+        });
+        return;
+      }
     }
 
-    // Validate offeringStatus
-    if (offeringStatus && !VALID_OFFERING_STATUSES.includes(offeringStatus)) {
-      res.status(400).json({
-        error: 'Invalid offering status',
-        validValues: VALID_OFFERING_STATUSES
-      });
-      return;
+    if (body.sort) {
+      if (!['asc', 'desc'].includes(body.sort.order)) {
+        res.status(400).json({
+          error: 'Invalid sort order. Must be "asc" or "desc"'
+        });
+        return;
+      }
     }
 
-    // Validate dates
-    if (created_at && !isValidDate(created_at)) {
-      res.status(400).json({
-        error: 'Invalid created_at date format'
-      });
-      return;
-    }
-
-    if (offering_on && !isValidDate(offering_on)) {
-      res.status(400).json({
-        error: 'Invalid offering_on date format'
-      });
-      return;
-    }
-
-    // Validate boolean
-    if (body.filters.signedUp !== undefined && typeof body.filters.signedUp !== 'boolean') {
-      res.status(400).json({
-        error: 'signedUp must be a boolean value'
-      });
-      return;
-    }
+    next();
+  } catch (error) {
+    res.status(400).json({
+      error: 'Invalid request format'
+    });
   }
-
-  // Validate pagination
-  if (body.pagination) {
-    const { page, pageSize } = body.pagination;
-    if (
-      !Number.isInteger(page) ||
-      !Number.isInteger(pageSize) ||
-      page < 1 ||
-      pageSize < 1 ||
-      pageSize > 100
-    ) {
-      res.status(400).json({
-        error: 'Invalid pagination values. Page must be >= 1 and pageSize must be between 1 and 100'
-      });
-      return;
-    }
-  }
-
-  // Validate sort
-  if (body.sort) {
-    if (!VALID_SORT_FIELDS.includes(body.sort.field)) {
-      res.status(400).json({
-        error: 'Invalid sort field',
-        validFields: VALID_SORT_FIELDS
-      });
-      return;
-    }
-    if (!['asc', 'desc'].includes(body.sort.order)) {
-      res.status(400).json({
-        error: 'Invalid sort order. Must be "asc" or "desc"'
-      });
-      return;
-    }
-  }
-
-  next();
 };
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
+// Initialize Express app
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Apply middleware
 app.use(express.json());
 app.use(cors());
 app.use(helmet());
@@ -223,10 +182,18 @@ app.use(rateLimit({
   max: 100
 }));
 
-// Error handler middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  },
+  db: {
+    schema: 'public'
+  }
 });
 
 // Health check endpoint
@@ -235,95 +202,131 @@ app.get('/health', (_req: express.Request, res: express.Response) => {
     status: 'healthy',
     validDieties: VALID_DIETIES,
     validTempos: VALID_TEMPOS,
-    validOfferingStatuses: VALID_OFFERING_STATUSES,
-    validSortFields: VALID_SORT_FIELDS
+    validOfferingStatuses: VALID_OFFERING_STATUSES
   });
 });
 
-// Main API endpoint with validation
-// src/server.ts
-// ... (previous imports and setup remain the same) ...
+// Test connection endpoint
+app.get('/api/test-connection', async (_req: express.Request, res: express.Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('Bhajan_Signups')
+      .select('offeringStatus')
+      .limit(1);
 
-// Main API endpoint with validation and debugging
+    if (error) {
+      throw error;
+    }
+
+    res.json({
+      status: 'success',
+      connected: !!data
+    });
+  } catch (error) {
+    const pgError = error as PostgrestError;
+    res.status(500).json({
+      error: 'Failed to connect to database',
+      details: pgError.message
+    });
+  }
+});
+
+// Main API endpoint
 app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, res: express.Response) => {
   try {
+    const startTime = performance.now();
     const body: GetBhajanSignupsRequest = req.body;
     const { filters, pagination, sort } = body;
     
-    console.log('Request body:', JSON.stringify(body, null, 2));
-    
+    console.log('Processing request with filters:', JSON.stringify(filters, null, 2));
+
+    // Build optimized query
     let query = supabase
       .from('Bhajan_Signups')
       .select('*', { count: 'exact' });
 
-    // Log the initial query state
-    console.log('Initial query setup complete');
+    // Track applied filters for debugging
+    const appliedFilters: Array<{ field: string; operator: string; value: any }> = [];
 
+    // Apply all filters at database level
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined) {
-          console.log(`Applying filter - ${key}:`, value);
           if (key === 'singer') {
             query = query.ilike(key, `%${value}%`);
+            appliedFilters.push({ field: key, operator: 'ilike', value: `%${value}%` });
           } else {
             query = query.eq(key, value);
+            appliedFilters.push({ field: key, operator: '=', value });
           }
         }
       });
     }
 
+    // Track sort details
+    let sortDetails = null;
     if (sort) {
-      console.log('Applying sort:', sort);
       query = query.order(sort.field, { ascending: sort.order === 'asc' });
+      sortDetails = { field: sort.field, order: sort.order };
     }
 
+    // Track pagination details
+    let paginationDetails = null;
     if (pagination) {
-      console.log('Applying pagination:', pagination);
       const { page, pageSize } = pagination;
       const start = (page - 1) * pageSize;
       query = query.range(start, start + pageSize - 1);
+      paginationDetails = { start, end: start + pageSize - 1 };
     }
 
-    // Execute the query
-    console.log('Executing main query...');
+    // Log the constructed query details
+    console.log('Query details:', {
+      table: 'Bhajan_Signups',
+      filters: appliedFilters,
+      sort: sortDetails,
+      pagination: paginationDetails,
+    });
+
+    // Generate pseudo SQL for debugging
+    const generatePseudoSQL = () => {
+      let sql = 'SELECT * FROM "Bhajan_Signups"';
+      
+      if (appliedFilters.length > 0) {
+        sql += ' WHERE ' + appliedFilters.map(f => {
+          if (f.operator === 'ilike') {
+            return `"${f.field}" ILIKE '${f.value}'`;
+          }
+          return `"${f.field}" = '${f.value}'`;
+        }).join(' AND ');
+      }
+
+      if (sortDetails) {
+        sql += ` ORDER BY "${sortDetails.field}" ${sortDetails.order.toUpperCase()}`;
+      }
+
+      if (paginationDetails) {
+        sql += ` LIMIT ${paginationDetails.end - paginationDetails.start + 1} OFFSET ${paginationDetails.start}`;
+      }
+
+      return sql;
+    };
+
+    console.log('Pseudo SQL:', generatePseudoSQL());
+    console.log('Executing optimized query...');
     const { data, error, count } = await query;
 
     if (error) {
-      console.error('Supabase error:', error);
       throw error;
     }
 
-    // Log the results
-    console.log('Query results:', {
-      resultCount: data?.length || 0,
-      totalCount: count,
-      firstRow: data?.[0]
+    const endTime = performance.now();
+    const queryTime = endTime - startTime;
+
+    console.log('Query completed successfully');
+    console.log('Results:', {
+      count: data?.length || 0,
+      executionTime: `${queryTime.toFixed(2)}ms`
     });
-
-    // Perform a separate count query for verification
-    console.log('Executing count verification query...');
-    const { data: countData, error: countError, count: rawCount } = await supabase
-      .from('Bhajan_Signups')
-      .select('*', { count: 'exact' })
-      .eq('offeringStatus', filters?.offeringStatus || '');
-    
-    if (countError) {
-      console.error('Count query error:', countError);
-    } else {
-      console.log('Raw count for offeringStatus:', rawCount);
-    }
-
-    // Check actual data in the database for the offering status
-    console.log('Checking distinct offering statuses in database...');
-    const { data: distinctStatuses, error: distinctError } = await supabase
-      .from('Bhajan_Signups')
-      .select('offeringStatus')
-      .not('offeringStatus', 'is', null);
-
-    if (!distinctError && distinctStatuses) {
-      const uniqueStatuses = [...new Set(distinctStatuses.map(row => row.offeringStatus))];
-      console.log('Distinct offering statuses in database:', uniqueStatuses);
-    }
 
     res.json({
       data,
@@ -331,14 +334,18 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
       page: pagination?.page || 1,
       pageSize: pagination?.pageSize || data?.length || 0,
       debug: {
+        executionTime: `${queryTime.toFixed(2)}ms`,
         appliedFilters: filters,
-        resultCount: data?.length || 0,
-        rawCount
+        resultCount: data?.length || 0
       }
     });
   } catch (error) {
     console.error('Error in /api/bhajan-signups:', error);
-    res.status(500).json({ error: 'Failed to fetch Bhajan signups' });
+    const pgError = error as PostgrestError;
+    res.status(500).json({
+      error: 'Failed to fetch Bhajan signups',
+      details: pgError.message
+    });
   }
 });
 
