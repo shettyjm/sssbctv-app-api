@@ -246,6 +246,8 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
     const body: GetBhajanSignupsRequest = req.body;
     const { filters, pagination, sort } = body;
     
+    console.log('Request body:', JSON.stringify(body, null, 2));
+    
     let query = supabase
       .from('Bhajan_Signups')
       .select('*', { count: 'exact' });
@@ -253,6 +255,7 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined) {
+          console.log(`Applying filter - ${key}:`, value);
           if (key === 'singer') {
             query = query.ilike(key, `%${value}%`);
           } else {
@@ -272,15 +275,41 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
       query = query.range(start, start + pageSize - 1);
     }
 
+    // Log the full query details
+    console.log('Query config:', query.toSQL());
+
     const { data, error, count } = await query;
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+
+    // Log the raw results
+    console.log('Query results:', {
+      resultCount: data?.length || 0,
+      totalCount: count,
+      firstRow: data?.[0]
+    });
+
+    // Let's also do a raw count query to verify
+    const { count: rawCount } = await supabase
+      .from('Bhajan_Signups')
+      .select('*', { count: 'exact', head: true })
+      .eq('offeringStatus', filters?.offeringStatus || '');
+    
+    console.log('Raw count for offeringStatus:', rawCount);
 
     res.json({
       data,
       total: count || 0,
       page: pagination?.page || 1,
-      pageSize: pagination?.pageSize || data.length,
+      pageSize: pagination?.pageSize || data?.length || 0,
+      debug: {
+        appliedFilters: filters,
+        resultCount: data?.length || 0,
+        rawCount
+      }
     });
   } catch (error) {
     console.error('Error in /api/bhajan-signups:', error);
