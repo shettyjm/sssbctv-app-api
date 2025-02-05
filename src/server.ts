@@ -184,14 +184,14 @@ app.use(rateLimit({
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY1!;
 
 
 
 console.log('Initializing Supabase with URL:', supabaseUrl.substring(0, 20) + '...');
 
 
-console.log('!!!! Remove this . supabaseKey:', supabaseKey+ '...');
+//console.log('!!!! Remove this . supabaseKey:', supabaseKey+ '...');
 
 console.log('Key type:', supabaseKey.startsWith('eyJ') ? 'JWT Token' : 'Unknown format');
 
