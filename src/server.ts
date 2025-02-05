@@ -195,6 +195,14 @@ console.log('!!!! Remove this . supabaseKey:', supabaseKey+ '...');
 
 console.log('Key type:', supabaseKey.startsWith('eyJ') ? 'JWT Token' : 'Unknown format');
 
+
+console.log('Environment check:', {
+  hasUrl: !!supabaseUrl,
+  urlPrefix: supabaseUrl?.substring(0, 20),
+  hasKey: !!supabaseKey,
+  keyPrefix: supabaseKey?.substring(0, 10),
+  nodeEnv: process.env.NODE_ENV
+});
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
@@ -216,6 +224,31 @@ app.get('/health', (_req: express.Request, res: express.Response) => {
 });
 
 // Test connection endpoint
+
+app.get('/api/test-connection1', async (_req: express.Request, res: express.Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('Bhajan_Signups')
+      .select('offeringStatus')
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({
+      status: 'success',
+      connected: !!data
+    });
+  } catch (error) {
+    const pgError = error as PostgrestError;
+    res.status(500).json({
+      error: 'Failed to connect to database',
+      details: pgError.message
+    });
+  }
+});
+
 app.get('/api/test-connection', async (_req: express.Request, res: express.Response) => {
   try {
     console.log('Testing database connection...');
