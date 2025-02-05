@@ -78,6 +78,12 @@ interface GetBhajanSignupsRequest {
   };
 }
 
+
+interface DietyDistribution {
+  diety: DietyType;
+  count: number;
+}
+
 // Validation Middleware
 const validateRequest = (
   req: express.Request,
@@ -225,29 +231,29 @@ app.get('/health', (_req: express.Request, res: express.Response) => {
 
 // Test connection endpoint
 
-app.get('/api/test-connection1', async (_req: express.Request, res: express.Response) => {
-  try {
-    const { data, error } = await supabase
-      .from('Bhajan_Signups')
-      .select('offeringStatus')
-      .limit(1);
+// app.get('/api/test-connection1', async (_req: express.Request, res: express.Response) => {
+//   try {
+//     const { data, error } = await supabase
+//       .from('Bhajan_Signups')
+//       .select('offeringStatus')
+//       .limit(1);
 
-    if (error) {
-      throw error;
-    }
+//     if (error) {
+//       throw error;
+//     }
 
-    res.json({
-      status: 'success',
-      connected: !!data
-    });
-  } catch (error) {
-    const pgError = error as PostgrestError;
-    res.status(500).json({
-      error: 'Failed to connect to database',
-      details: pgError.message
-    });
-  }
-});
+//     res.json({
+//       status: 'success',
+//       connected: !!data
+//     });
+//   } catch (error) {
+//     const pgError = error as PostgrestError;
+//     res.status(500).json({
+//       error: 'Failed to connect to database',
+//       details: pgError.message
+//     });
+//   }
+// });
 
 app.get('/api/test-connection', async (_req: express.Request, res: express.Response) => {
   try {
@@ -311,6 +317,54 @@ app.get('/api/test-connection', async (_req: express.Request, res: express.Respo
     });
   }
 });
+
+// Deity distribution endpoint
+app.get('/api/bhajan-signups/deity-distribution', async (_req: express.Request, res: express.Response) => {
+  try {
+    console.log('Fetching deity distribution...');
+
+    // Get all signed up entries
+    const { data, error } = await supabase
+      .from('Bhajan_Signups')
+      .select('diety, signedUp');
+
+    if (error) {
+      throw error;
+    }
+
+    // Initialize distribution with all deities set to 0
+    const distribution: DietyDistribution[] = VALID_DIETIES.map(diety => ({
+      diety,
+      count: 0
+    }));
+
+    // Count signed up entries for each deity
+    data?.forEach(row => {
+      if (row.signedUp) {
+        const index = distribution.findIndex(d => d.diety === row.diety);
+        if (index !== -1) {
+          distribution[index].count++;
+        }
+      }
+    });
+
+    console.log('Distribution calculated:', distribution);
+
+    res.json({
+      status: 'success',
+      data: distribution
+    });
+
+  } catch (error) {
+    console.error('Error fetching deity distribution:', error);
+    const pgError = error as PostgrestError;
+    res.status(500).json({
+      error: 'Failed to fetch deity distribution',
+      details: pgError.message
+    });
+  }
+});
+
 
 // Main API endpoint
 app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, res: express.Response) => {
