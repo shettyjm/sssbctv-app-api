@@ -84,6 +84,10 @@ interface DietyDistribution {
   count: number;
 }
 
+interface TempoDistribution {
+  tempo: TempoType;
+  count: number;
+}
 // Validation Middleware
 const validateRequest = (
   req: express.Request,
@@ -319,14 +323,40 @@ app.get('/api/test-connection', async (_req: express.Request, res: express.Respo
 });
 
 // Deity distribution endpoint
-app.get('/api/bhajan-signups/deity-distribution', async (_req: express.Request, res: express.Response) => {
+
+app.get('/api/bhajan-signups/deity-distribution', async (req: any, res: any) => {
   try {
     console.log('Fetching deity distribution...');
 
-    // Get all signed up entries
-    const { data, error } = await supabase
+    const offering_on = req.query.offering_on as string;
+    console.log('Filtering by offering_on:', offering_on);
+
+    // Validate date format if provided
+    if (offering_on && !/^\d{4}-\d{2}-\d{2}$/.test(offering_on)) {
+      return res.status(400).json({
+        error: 'Invalid date format. Use YYYY-MM-DD'
+      });
+    }
+
+    // Build query
+    let query = supabase
       .from('Bhajan_Signups')
-      .select('diety, signedUp');
+      .select('diety, signedUp, offering_on');
+
+    // Apply date filter if provided
+    if (offering_on) {
+      // Convert the date string to timestamp range for that day
+      const startTime = `${offering_on}T00:00:00`;
+      const endTime = `${offering_on}T23:59:59`;
+      
+      console.log('Filtering offering_on between:', startTime, 'and', endTime);
+      
+      query = query
+        .gte('offering_on', startTime)
+        .lte('offering_on', endTime);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw error;
@@ -348,11 +378,17 @@ app.get('/api/bhajan-signups/deity-distribution', async (_req: express.Request, 
       }
     });
 
-    console.log('Distribution calculated:', distribution);
+    console.log('Distribution calculated:', {
+      date: offering_on || 'all dates',
+      distribution
+    });
 
     res.json({
       status: 'success',
-      data: distribution
+      data: distribution,
+      filters: {
+        offering_on: offering_on || null
+      }
     });
 
   } catch (error) {
@@ -364,6 +400,86 @@ app.get('/api/bhajan-signups/deity-distribution', async (_req: express.Request, 
     });
   }
 });
+
+// Tempo distribution endpoint
+app.get('/api/bhajan-signups/tempo-distribution', async (req: any, res: any) => {
+  try {
+    console.log('Fetching tempo distribution...');
+    
+    const offering_on = req.query.offering_on as string;
+    console.log('Filtering by offering_on:', offering_on);
+
+    // Validate date format if provided
+    if (offering_on && !/^\d{4}-\d{2}-\d{2}$/.test(offering_on)) {
+      return res.status(400).json({
+        error: 'Invalid date format. Use YYYY-MM-DD'
+      });
+    }
+
+    // Build query
+    let query = supabase
+      .from('Bhajan_Signups')
+      .select('tempo, signedUp, offering_on');
+
+    // Apply date filter if provided
+   // Apply date filter if provided
+   if (offering_on) {
+    // Convert the date string to timestamp range for that day
+    const startTime = `${offering_on}T00:00:00`;
+    const endTime = `${offering_on}T23:59:59`;
+    
+    console.log('Filtering offering_on between:', startTime, 'and', endTime);
+    
+    query = query
+      .gte('offering_on', startTime)
+      .lte('offering_on', endTime);
+  }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    // Initialize distribution with all tempos set to 0
+    const distribution: TempoDistribution[] = VALID_TEMPOS.map(tempo => ({
+      tempo,
+      count: 0
+    }));
+
+    // Count signed up entries for each tempo
+    data?.forEach(row => {
+      if (row.signedUp) {
+        const index = distribution.findIndex(t => t.tempo === row.tempo);
+        if (index !== -1) {
+          distribution[index].count++;
+        }
+      }
+    });
+
+    console.log('Tempo distribution calculated:', {
+      date: offering_on || 'all dates',
+      distribution
+    });
+
+    res.json({
+      status: 'success',
+      data: distribution,
+      filters: {
+        offering_on: offering_on || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching tempo distribution:', error);
+    const pgError = error as PostgrestError;
+    res.status(500).json({
+      error: 'Failed to fetch tempo distribution',
+      details: pgError.message
+    });
+  }
+});
+
 
 
 // Main API endpoint
