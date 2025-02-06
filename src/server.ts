@@ -12,6 +12,7 @@ dotenv.config();
 
 // Constants and Enums
 const VALID_DIETIES = [
+  'Sai',
   'Ganesha',
   'Shiva',
   'Rama',
@@ -21,6 +22,17 @@ const VALID_DIETIES = [
   'Multi Faith',
   'Other'
 ] as const;
+const DIETY_ICONS: Record<string, string> =
+{
+  'Sai': "🙏",
+  'Shiva': "🕉️",
+  'Ganesha': "🐘",
+  'Rama': "🏹",
+  'Krishna': "🎺",
+  'Sarva Dharma': "✨",
+  'Rama, Krishna': "✨",
+  'Multi Faith': "✨"
+}
 
 const VALID_TEMPOS = [
   'Slow',
@@ -28,6 +40,15 @@ const VALID_TEMPOS = [
   'Fast',
   'Very Fast'
 ] as const;
+
+const TEMPO_ICONS: Record<string, string> =
+{
+  'Slow': "🐢",
+  'Medium Slow': "🚶",
+  'Medium': "⚡",
+  'Medium Fast': "🏃",
+  'Fast': "🚀"
+}
 
 const VALID_OFFERING_STATUSES = [
   'SUNDAY-THISWEEK',
@@ -81,11 +102,13 @@ interface GetBhajanSignupsRequest {
 
 interface DietyDistribution {
   diety: DietyType;
+  icon: string,
   count: number;
 }
 
 interface TempoDistribution {
   tempo: TempoType;
+  icon : string,
   count: number;
 }
 // Validation Middleware
@@ -225,7 +248,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // Health check endpoint
 app.get('/health', (_req: express.Request, res: express.Response) => {
-  res.status(200).json({ 
+  res.status(200).json({
     status: 'healthy',
     validDieties: VALID_DIETIES,
     validTempos: VALID_TEMPOS,
@@ -262,7 +285,7 @@ app.get('/health', (_req: express.Request, res: express.Response) => {
 app.get('/api/test-connection', async (_req: express.Request, res: express.Response) => {
   try {
     console.log('Testing database connection...');
-    
+
     // Try a direct select with no filters first
     console.log('Attempting direct select...');
     const { data: selectData, error: selectError } = await supabase
@@ -304,8 +327,8 @@ app.get('/api/test-connection', async (_req: express.Request, res: express.Respo
         error: selectError ? (selectError as PostgrestError).message : null
       },
       filterResult: {
-        availableStatuses: filterData ? 
-          [...new Set(filterData.map(row => row.offeringStatus))].filter(Boolean) : 
+        availableStatuses: filterData ?
+          [...new Set(filterData.map(row => row.offeringStatus))].filter(Boolean) :
           [],
         error: filterError ? (filterError as PostgrestError).message : null
       }
@@ -348,9 +371,9 @@ app.get('/api/bhajan-signups/deity-distribution', async (req: any, res: any) => 
       // Convert the date string to timestamp range for that day
       const startTime = `${offering_on}T00:00:00`;
       const endTime = `${offering_on}T23:59:59`;
-      
+
       console.log('Filtering offering_on between:', startTime, 'and', endTime);
-      
+
       query = query
         .gte('offering_on', startTime)
         .lte('offering_on', endTime);
@@ -365,6 +388,7 @@ app.get('/api/bhajan-signups/deity-distribution', async (req: any, res: any) => 
     // Initialize distribution with all deities set to 0
     const distribution: DietyDistribution[] = VALID_DIETIES.map(diety => ({
       diety,
+      icon: DIETY_ICONS[diety] || '🙏',
       count: 0
     }));
 
@@ -405,7 +429,7 @@ app.get('/api/bhajan-signups/deity-distribution', async (req: any, res: any) => 
 app.get('/api/bhajan-signups/tempo-distribution', async (req: any, res: any) => {
   try {
     console.log('Fetching tempo distribution...');
-    
+
     const offering_on = req.query.offering_on as string;
     console.log('Filtering by offering_on:', offering_on);
 
@@ -422,18 +446,18 @@ app.get('/api/bhajan-signups/tempo-distribution', async (req: any, res: any) => 
       .select('tempo, signedUp, offering_on');
 
     // Apply date filter if provided
-   // Apply date filter if provided
-   if (offering_on) {
-    // Convert the date string to timestamp range for that day
-    const startTime = `${offering_on}T00:00:00`;
-    const endTime = `${offering_on}T23:59:59`;
-    
-    console.log('Filtering offering_on between:', startTime, 'and', endTime);
-    
-    query = query
-      .gte('offering_on', startTime)
-      .lte('offering_on', endTime);
-  }
+    // Apply date filter if provided
+    if (offering_on) {
+      // Convert the date string to timestamp range for that day
+      const startTime = `${offering_on}T00:00:00`;
+      const endTime = `${offering_on}T23:59:59`;
+
+      console.log('Filtering offering_on between:', startTime, 'and', endTime);
+
+      query = query
+        .gte('offering_on', startTime)
+        .lte('offering_on', endTime);
+    }
 
     const { data, error } = await query;
 
@@ -444,6 +468,7 @@ app.get('/api/bhajan-signups/tempo-distribution', async (req: any, res: any) => 
     // Initialize distribution with all tempos set to 0
     const distribution: TempoDistribution[] = VALID_TEMPOS.map(tempo => ({
       tempo,
+      icon: TEMPO_ICONS[tempo] ||  "🐢",
       count: 0
     }));
 
@@ -488,7 +513,7 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
     const startTime = performance.now();
     const body: GetBhajanSignupsRequest = req.body;
     const { filters, pagination, sort } = body;
-    
+
     console.log('Processing request with filters:', JSON.stringify(filters, null, 2));
 
     // Build optimized query
@@ -541,7 +566,7 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
     // Generate pseudo SQL for debugging
     const generatePseudoSQL = () => {
       let sql = 'SELECT * FROM "Bhajan_Signups"';
-      
+
       if (appliedFilters.length > 0) {
         sql += ' WHERE ' + appliedFilters.map(f => {
           if (f.operator === 'ilike') {
