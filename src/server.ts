@@ -79,6 +79,26 @@ interface BhajanSignupDto {
   offeringStatus: OfferingStatusType;
 }
 
+interface FormattedBhajanSignup {
+  id: string;
+  created_at: string;
+  title: string | null;
+  position: number;
+  singer: string | null;
+  details: string | null;
+  signedUp: boolean;
+  tempo: {
+    value: string;
+    icon: string;
+  };
+  diety: {
+    value: string;
+    icon: string;
+  };
+  offering_on: string | null;
+  offeringStatus: OfferingStatusType;
+}
+
 interface GetBhajanSignupsRequest {
   filters?: {
     created_at?: string;
@@ -595,6 +615,19 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
       throw error;
     }
 
+    // Transform the data to include formatted tempo and deity fields
+    const formattedData: FormattedBhajanSignup[] = data?.map(item => ({
+      ...item,
+      tempo: {
+        value: item.tempo,
+        icon: TEMPO_ICONS[item.tempo] || '⏱️'
+      },
+      diety: {
+        value: item.diety,
+        icon: DIETY_ICONS[item.diety] || '🙏'
+      }
+    })) || [];
+
     const endTime = performance.now();
     const queryTime = endTime - startTime;
 
@@ -605,7 +638,7 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
     });
 
     res.json({
-      data,
+      data : formattedData,
       total: count || 0,
       page: pagination?.page || 1,
       pageSize: pagination?.pageSize || data?.length || 0,
