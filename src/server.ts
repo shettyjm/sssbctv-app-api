@@ -170,6 +170,31 @@ interface GetBhajansRequest {
   };
 }
 
+interface FormattedBhajan {
+  id: string;
+  Title: string;
+  Lyrics?: string;
+  Meaning?: string;
+  Diety?: {
+    value: string;
+    icon?: string | null;
+  };
+  Tempo?: {
+    value: string;
+    icon?: string | null;
+  };
+  Language?: string;
+  Level?: string;
+  Raga?: string;
+  Beat?: string;
+  Gents_Pitch?: string;
+  Ladies_Pitch?: string;
+  Links?: {
+    SaiRhythms?: string;
+    Audio?: string;
+  };
+}
+
 // Validation Middleware
 const validateRequest = (
   req: express.Request,
@@ -594,8 +619,33 @@ app.post('/api/bhajans', async (req: express.Request, res: express.Response) => 
 
     if (error) throw error;
 
+    const formattedData: FormattedBhajan[] = data?.map(item => ({
+      id: item.id,
+      Title: item.Title,
+      Lyrics: item.Lyrics,
+      Meaning: item.Meaning,
+      Diety: item.Deity ? {
+        value: item.Deity,
+        icon: DIETY_ICONS[item.Deity] || null
+      } : undefined,
+      Tempo: item.Tempo ? {
+        value: item.Tempo,
+        icon: TEMPO_ICONS[item.Tempo] || null
+      } : undefined,
+      Language: item.Language,
+      Level: item.Level,
+      Raga: item.Raga,
+      Beat: item.Beat,
+      Gents_Pitch: item.Gents_Pitch,
+      Ladies_Pitch: item.Ladies_Pitch,
+      Links: {
+        SaiRhythms: item.SaiRhythms_Link || undefined,
+        Audio: item.AudioLink || undefined
+      }
+    })) || [];
+
     res.json({
-      data,
+      data: formattedData,
       total: count || 0,
       page: pagination?.page || 1,
       pageSize: pagination?.pageSize || data?.length || 0
