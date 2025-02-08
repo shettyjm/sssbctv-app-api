@@ -11,6 +11,16 @@ import { performance } from 'perf_hooks';
 dotenv.config();
 
 // Constants and Enums
+
+const VALID_LABELS = Object.freeze({
+  'bhajan_db': 'bhajan_db',
+  VALUE2: 'value2',
+  VALUE3: 'value3'
+});
+
+const VALID_TABLE_NAMES =[
+  'bhajan_db'
+] as const;
 const VALID_DIETIES = [
   'Sai',
   'Ganesha',
@@ -131,6 +141,35 @@ interface TempoDistribution {
   icon : string,
   count: number;
 }
+
+interface BhajanDBEntry {
+  id: string;
+  Title: string;
+  Lyrics?: string;
+  Meaning?: string;
+  Deity?: string;
+  Language?: string;
+  Tempo?: string;
+  Level?: string;
+  Raga?: string;
+  Beat?: string;
+  Gents_Pitch?: string;
+  Ladies_Pitch?: string;
+  SaiRhythms_Link?: string;
+}
+
+interface GetBhajansRequest {
+  filters?: {
+    Deity?: string;
+    Tempo?: string;
+    Title?: string;
+  };
+  pagination?: {
+    page: number;
+    pageSize: number;
+  };
+}
+
 // Validation Middleware
 const validateRequest = (
   req: express.Request,
@@ -525,7 +564,52 @@ app.get('/api/bhajan-signups/tempo-distribution', async (req: any, res: any) => 
   }
 });
 
+app.post('/api/bhajans', async (req: express.Request, res: express.Response) => {
+  try {
+    const { filters, pagination } = req.body as GetBhajansRequest;
+    
+    let query = supabase
+      .from(VALID_LABELS.bhajan_db)
+      .select('*', { count: 'exact' });
 
+    if (filters) {
+      if (filters.Deity) {
+        query = query.eq('Deity', filters.Deity);
+      }
+      if (filters.Tempo) {
+        query = query.eq('Tempo', filters.Tempo);
+      }
+      if (filters.Title) {
+        query = query.ilike('Title', `${filters.Title}%`);
+      }
+    }
+
+    if (pagination) {
+      const { page, pageSize } = pagination;
+      const start = (page - 1) * pageSize;
+      query = query.range(start, start + pageSize - 1);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) throw error;
+
+    res.json({
+      data,
+      total: count || 0,
+      page: pagination?.page || 1,
+      pageSize: pagination?.pageSize || data?.length || 0
+    });
+
+  } catch (error) {
+    console.error('Error fetching bhajans:', error);
+    const pgError = error as PostgrestError;
+    res.status(500).json({
+      error: 'Failed to fetch bhajans',
+      details: pgError.message
+    });
+  }
+});
 
 // Main API endpoint
 app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, res: express.Response) => {
