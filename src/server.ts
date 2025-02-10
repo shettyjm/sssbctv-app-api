@@ -1,5 +1,6 @@
 // src/server.ts
 import express from 'express';
+import RequestHandler from 'express'
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient, PostgrestError } from '@supabase/supabase-js';
@@ -142,21 +143,21 @@ interface TempoDistribution {
   count: number;
 }
 
-interface BhajanDBEntry {
-  id: string;
-  Title: string;
-  Lyrics?: string;
-  Meaning?: string;
-  Deity?: string;
-  Language?: string;
-  Tempo?: string;
-  Level?: string;
-  Raga?: string;
-  Beat?: string;
-  Gents_Pitch?: string;
-  Ladies_Pitch?: string;
-  SaiRhythms_Link?: string;
-}
+// interface BhajanDBEntry {
+//   id: string;
+//   Title: string;
+//   Lyrics?: string;
+//   Meaning?: string;
+//   Deity?: string;
+//   Language?: string;
+//   Tempo?: string;
+//   Level?: string;
+//   Raga?: string;
+//   Beat?: string;
+//   Gents_Pitch?: string;
+//   Ladies_Pitch?: string;
+//   SaiRhythms_Link?: string;
+// }
 
 interface GetBhajansRequest {
   filters?: {
@@ -194,6 +195,26 @@ interface FormattedBhajan {
     Audio?: string;
   };
 }
+
+interface CreateBhajanSignupRequest {
+  
+  title: string ;
+  position ?: number;
+  singer: string ;
+  details: string | null;
+  tempo: {
+    value ?: string;
+    icon ?: string;
+  };
+  diety: {
+    value ?: string;
+    icon ?: string;
+  };
+  offering_on: string ;
+  offeringStatus: OfferingStatusType;
+}
+
+
 
 // Validation Middleware
 const validateRequest = (
@@ -284,6 +305,71 @@ const validateRequest = (
       error: 'Invalid request format'
     });
   }
+};
+
+
+// interface CreateBhajanSignupRequest {
+//   singer: string;
+//   song: string;
+//   diety: string;
+//   tempo: string;
+//   duration: number;
+//   date: string;
+//   notes?: string;
+// }
+
+// Validation middleware for create request
+const validateCreateRequest = (req: express.Request,
+   res: express.Response, next:
+    express.NextFunction): void =>{
+  const body = req.body as CreateBhajanSignupRequest;
+  
+  // Required fields validation
+  const missingFields = [];
+  if (!body.title) missingFields.push('title');
+  if (!body.singer) missingFields.push('singer');
+  if (!body.diety) missingFields.push('diety');
+  if (!body.tempo) missingFields.push('tempo');
+  if (!body.offering_on) missingFields.push('offering_on');
+
+  
+  if (missingFields.length > 0) {
+     res.status(400).json({
+      error: 'Missing required fields',
+      details: `Missing: ${missingFields.join(', ')}`
+    });
+    return;
+  }
+
+  // Validate tempo values (assuming these are your valid options)
+  // const validTempos = ['Slow', 'Medium', 'Fast'];
+  // if (!validTempos.includes(body.tempo.value?)) {
+  //    res.status(400).json({
+  //     error: 'Invalid tempo value',
+  //     details: `Tempo must be one of: ${validTempos.join(', ')}`
+  //   });
+  //   return;
+  // }
+
+  // Duration should be a positive number
+  // if (typeof body.duration !== 'number' || body.duration <= 0) {
+  //    res.status(400).json({
+  //     error: 'Invalid duration',
+  //     details: 'Duration must be a positive number'
+  //   });
+  //   return;
+  // }
+
+  // Basic date validation
+  // if (!Date.parse(body.date)) {
+  //    res.status(400).json({
+  //     error: 'Invalid date format',
+  //     details: 'Please provide a valid date'
+  //   });
+  //   return;
+  // }
+
+  next();
 };
 
 // Initialize Express app
@@ -792,6 +878,169 @@ app.post('/api/bhajan-signups', validateRequest, async (req: express.Request, re
   }
 });
 
+
+// const createBhajanSignup: RequestHandler = async (req: express.Request, res: express.Response) => {
+//   try {
+//     const startTime = performance.now();
+//     const newSignup: CreateBhajanSignupRequest = req.body;
+
+//     console.log('Processing create request:', JSON.stringify(newSignup, null, 2));
+
+//     // Insert new record
+//     const { data, error } = await supabase
+//       .from('Bhajan_Signups')
+//       .insert([
+//         {
+//           singer: newSignup.singer,
+//           song: newSignup.song,
+//           diety: newSignup.diety,
+//           tempo: newSignup.tempo,
+//           duration: newSignup.duration,
+//           date: newSignup.date,
+//           notes: newSignup.notes || null
+//         }
+//       ])
+//       .select()
+//       .single();
+
+//     if (error) {
+//       throw error;
+//     }
+
+//     // Format the response data similar to your get endpoint
+//     const formattedData: FormattedBhajanSignup = {
+//       ...data,
+//       tempo: {
+//         value: data.tempo,
+//         icon: TEMPO_ICONS[data.tempo] || '⏱️'
+//       },
+//       diety: {
+//         value: data.diety,
+//         icon: DIETY_ICONS[data.diety] || '🙏'
+//       }
+//     };
+
+//     const endTime = performance.now();
+//     const executionTime = endTime - startTime;
+
+//     console.log('Create operation completed successfully');
+//     console.log('Results:', {
+//       id: data.id,
+//       executionTime: `${executionTime.toFixed(2)}ms`
+//     });
+
+//     res.status(201).json({
+//       data: formattedData,
+//       debug: {
+//         executionTime: `${executionTime.toFixed(2)}ms`,
+//         operation: 'create',
+//         timestamp: new Date().toISOString()
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('Error in /api/bhajan-signup/create:', error);
+//     const pgError = error as PostgrestError;
+    
+//     // Handle unique constraint violations
+//     if (pgError.code === '23505') {
+//       res.status(409).json({
+//         error: 'Duplicate entry',
+//         details: 'A signup with these details already exists'
+//       });
+//       return;
+//     }
+
+//     res.status(500).json({
+//       error: 'Failed to create Bhajan signup',
+//       details: pgError.message
+//     });
+//   }
+// };
+
+// Register the route with both middleware and handler
+app.post('/api/bhajan-signup/create', validateCreateRequest, async (req: express.Request, res: express.Response) => {
+  try {
+    const startTime = performance.now();
+    const newSignup: CreateBhajanSignupRequest = req.body;
+
+    console.log('Processing create request:', JSON.stringify(newSignup, null, 2));
+
+    // Insert new record
+    const { data, error } = await supabase
+      .from('Bhajan_Signups')
+      .insert([
+        {
+          title: newSignup.title,
+          position: newSignup.position,
+          singer: newSignup.singer,
+          details: newSignup.details,
+          tempo: newSignup.tempo?.value,
+          diety: newSignup.diety?.value,
+          dietyIcon : newSignup.diety?.icon,
+          tempoIcon : newSignup.tempo?.icon,
+          offering_on: newSignup.offering_on,
+          offeringStatus: newSignup.offeringStatus,
+          signedUp: true
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    // Format the response data similar to your get endpoint
+    const formattedData: FormattedBhajanSignup = {
+      ...data,
+      tempo: {
+        value: data.tempo,
+        icon: TEMPO_ICONS[data.tempo] || '⏱️'
+      },
+      diety: {
+        value: data.diety,
+        icon: DIETY_ICONS[data.diety] || '🙏'
+      }
+    };
+
+    const endTime = performance.now();
+    const executionTime = endTime - startTime;
+
+    console.log('Create operation completed successfully');
+    console.log('Results:', {
+      id: data.id,
+      executionTime: `${executionTime.toFixed(2)}ms`
+    });
+
+    res.status(201).json({
+      data: formattedData,
+      debug: {
+        executionTime: `${executionTime.toFixed(2)}ms`,
+        operation: 'create',
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in /api/bhajan-signup/create:', error);
+    const pgError = error as PostgrestError;
+    
+    // Handle unique constraint violations
+    if (pgError.code === '23505') {
+      res.status(409).json({
+        error: 'Duplicate entry',
+        details: 'A signup with these details already exists'
+      });
+      return;
+    }
+
+    res.status(500).json({
+      error: 'Failed to create Bhajan signup',
+      details: pgError.message
+    });
+  }
+});
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
